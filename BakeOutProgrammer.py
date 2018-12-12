@@ -12,28 +12,21 @@ TEMP_DEFAULT = 1200.
 PROGRAM_DEFAULT = [TEMP_DEFAULT, 0., -1.]
 PARAMS_DEFAULT = [TEMP_DEFAULT, 0., 0., 0.]
 
-class BakeOutProgrammerMainWindow(UiMainWindow):
+class BakeOutProgrammerMainWindow(TauMainWindow):
     def __init__(self, parent=None, flags=0):
-        UiMainWindow.__init__(self, parent, flags)
+        TauMainWindow.__init__(self, parent, flags)
+        
         self._numbers = set()
-        self._channelStates = [QtCore.Qt.Unchecked]*8
-
+        self._zStates = [QtCore.Qt.Unchecked]*8
+        
+        UiMainWindow().setupUi(self)
         self.addControllerComboItems()
 
 #        self._listener = BakeOutProgrammerListener(self)
 #        self._listener.setUseParentModel(True)
-#        self._listener.setModel("/Temperature_All")
-#        
-#        self.connect(self._listener,
-#                     QtCore.SIGNAL("valueChanged(PyQt_PyObject)"),
-#                     self.on_listener_valueChanged)                 
+#        self._listener.setModel("/Temperature_All")         
         
 #    __init__()
-
-    def on_listener_valueChanged(self, value):
-        self.emit(QtCore.SIGNAL("valueChanged(PyQt_PyObject)"), value)
-        
-#    on_listener_valueChanged()
 
     @QtCore.pyqtSignature("QString")
     def on_controllerCombo_currentIndexChanged(self, devModel):
@@ -51,17 +44,18 @@ class BakeOutProgrammerMainWindow(UiMainWindow):
                     except AttributeError:
                         continue
                     try:
-                        channels = modelObj.getAttribute("Program_%s_Zones" % number).read().value.tolist()
+                        zones = modelObj.getAttribute("Program_%s_Zones" % number).read().value.tolist()
                     except AttributeError:
-                        channels = []
+                        zones = []
                 except DevFailed:
                     break
                 if ( program != [PROGRAM_DEFAULT] ):
-                    programs.append((number, program, channels))
+                    programs.append((number, program, zones))
             
             self.loadPrograms(programs)
         else:
-            self.tabWidget.setDisabled(True)
+            pass
+#            self.tabWidget.setDisabled(True)
             
         if ( not self.tabWidget.count() ):
             self.tabAddRequest()
@@ -85,22 +79,22 @@ class BakeOutProgrammerMainWindow(UiMainWindow):
 
 #    on_newProgramButton_clicked()
 
-    def channelState(self, channel):
-        return self._channelStates[channel - 1]
+    def zoneState(self, zone):
+        return self._zStates[zone - 1]
     
-#    channelState()
+#    zoneState()
     
-    def setChannelState(self, channel, state):
-        if ( not self._channelStates[channel - 1] == state ):
-            self._channelStates[channel - 1] = state
+    def setZoneState(self, zone, state):
+        if ( not self._zStates[zone - 1] == state ):
+            self._zStates[zone - 1] = state
         
-#    setChannelState()
+#    setZoneState()
 
-    def setChannelsDisabled(self, channel=None):
+    def setZonesDisabled(self, zone=None):
         for tabIndex in range(self.tabWidget.count()):
-            self.tabWidget.widget(tabIndex).setChannelDisabled(channel)       
+            self.tabWidget.widget(tabIndex).setZoneDisabled(zone)       
         
-#    setChannelsDisabled()
+#    setZonesDisabled()
 
     def listener(self):
         return self._listener
@@ -109,11 +103,11 @@ class BakeOutProgrammerMainWindow(UiMainWindow):
     
     def loadPrograms(self, programs):
         if ( programs ):
-            for tabIndex, (number, program, channels) in enumerate(programs):                   
+            for tabIndex, (number, program, zones) in enumerate(programs):                   
                 if ( not self.tabWidget.widget(tabIndex) ):
                     if ( not self.tabAddRequest() ):
                         break                 
-                self.tabWidget.widget(tabIndex).loadProgram(number, program, channels)
+                self.tabWidget.widget(tabIndex).loadProgram(number, program, zones)
                 
             self.updateNumbers()
                     
@@ -122,16 +116,13 @@ class BakeOutProgrammerMainWindow(UiMainWindow):
     def reset(self):
         self.debug("reset")
         self._numbers = set()        
-        self._channelStates = [QtCore.Qt.Unchecked]*8
+        self._zStates = [QtCore.Qt.Unchecked]*8
         
         delTab = self.tabWidget.widget(0)
         while ( delTab ):
             self.tabWidget.removeTab(0)
             delTab.deleteLater()
             delTab = self.tabWidget.widget(0)
-            
-        self.newProgramButton.show()
-        self.closeProgramButton.hide()
         
 #    reset()
     
@@ -166,15 +157,15 @@ class BakeOutProgrammerMainWindow(UiMainWindow):
         elif ( tabCount <= 8 ):
             self.newProgramButton.show()
                 
-        for channel in range(1, 9):
-            if ( delTab.channelState(channel) == QtCore.Qt.Checked ):
-                self.setChannelState(channel, QtCore.Qt.Unchecked)
+        for zone in range(1, 9):
+            if ( delTab.zoneState(zone) == QtCore.Qt.Checked ):
+                self.setZoneState(zone, QtCore.Qt.Unchecked)
             
         self._numbers.remove(delTab.number())
         self.tabWidget.removeTab(index)
         delTab.deleteLater()
 
-        self.setChannelsDisabled()
+        self.setZonesDisabled()
         return True      
         
 #    tabCloseRequest()
@@ -206,29 +197,28 @@ class BakeOutProgrammerMainWindow(UiMainWindow):
 
 #BakeOutProgrammerMainWindow()
 
-class BakeOutProgrammerTab(UiTab):  
-    def __init__(self, number, parent=None, flags=0):
-        UiTab.__init__(self, parent, flags)
+class BakeOutProgrammerTab(TauWidget):  
+    def __init__(self, number):
+        TauWidget.__init__(self)
+
         self._number = number
-        self._pressureModel = ""
-        self._removeButtons = []
-        self._channelStates = [QtCore.Qt.Unchecked]*8
+        self._pModel = ""
+        self._rButtons = []
+        self._zStates = [QtCore.Qt.Unchecked]*8
         self._program = [PROGRAM_DEFAULT]
-        self._startTemp = TEMP_DEFAULT
-        self._startTime = long(0)
-        self._pauseTime = long(0)
-        self._finishTime = long(0)
+        self._sTemp, self._sTime, self._pTime, self._fTime = tuple(PARAMS_DEFAULT)
+        self._eFTime = 0.
+        self._eSFTimes = []
         self._state = [False, False, False]
+        self._cStep = 0
+        self._sCount = 0
+            
+        UiTab().setupUi(self)
+        self.addPressureComboItems()
         
         self._listener = BakeOutProgrammerListener(self)
         self._listener.setUseParentModel(True)
         self._listener.setModel("/Temperature_All")            
-        
-        self.addPressureComboItems()
-        for channel in range(1, 9):
-            self.channelTemp(channel).setUseParentModel(True)
-            self.channelTemp(channel).setModel("/Temperature_%s" % channel)
-        
         self.connect(self._listener,
                      QtCore.SIGNAL("valueChanged(PyQt_PyObject)"),
                      self.on_listener_valueChanged)
@@ -238,15 +228,17 @@ class BakeOutProgrammerTab(UiTab):
     def event(self, event):
         if ( event.type() == QtCore.QEvent.ParentChange and isinstance(self.window(), BakeOutProgrammerMainWindow) ):
             self.setUseParentModel(True)
-            self.setChannelDisabled()
-#            self.connect(self.window(),
-#                         QtCore.SIGNAL("valueChanged(PyQt_PyObject)"),
-#                         self.on_parent_valueChanged)
+            self.setZoneDisabled()
             return True
         return False
     
 #    event()
 
+    def on_currentProgressBar_valueChanged(self, value):
+        print value
+        
+#        on_currentProgressBar_valueChanged()        
+    
     @QtCore.pyqtSignature("")
     def on_addButton_clicked(self):
         self.debug("on_addButton_clicked()")
@@ -282,8 +274,8 @@ class BakeOutProgrammerTab(UiTab):
                 self.updateProgram()
             self.updateProgressBars()
         elif ( l == 8 ):
-            temps = [value[z - 1] for z in self.channels() if value[z - 1] != TEMP_DEFAULT]
-            dTemps = [abs(self.program()[0][0] - t) for t in temps]
+            temps = [value[z - 1] for z in self.zones() if value[z - 1] != TEMP_DEFAULT]
+            dTemps = [abs(self._program[0][0] - t) for t in temps]
             sTemp = dTemps and temps[dTemps.index(max(dTemps))] or TEMP_DEFAULT
             self.setStartTemp(sTemp)
             self.resetStartTime()
@@ -301,10 +293,8 @@ class BakeOutProgrammerTab(UiTab):
         if ( devModel ):
             attributes.extend(["P1", "P2", "P3", "P4", "P5"])
             self.gaugeCombo.setEnabled(True)
-            self.gaugeValue.setEnabled(True)            
         else:
             self.gaugeCombo.setDisabled(True)
-            self.gaugeValue.setDisabled(True)            
         
         self.gaugeCombo.addItems(sorted(attributes))
         self.hidePressureCurve()
@@ -317,10 +307,8 @@ class BakeOutProgrammerTab(UiTab):
         if ( attrModel ):
             self.hidePressureCurve()
             self.setPressureModel(self.pressureCombo.currentText() + "/" + attrModel)
-            self.gaugeValue.setModel(self.pressureModel())
             self.togglePressureCurve(self.isStarted())
         else:
-            self.gaugeValue.resetModel()
             self.hidePressureCurve()
             self.resetPressureModel()
   
@@ -328,10 +316,10 @@ class BakeOutProgrammerTab(UiTab):
 
     @QtCore.pyqtSignature("")
     def on_removeButton_clicked(self):
-        atRow = self._removeButtons.index(self.sender())
-        valid = self.isStepValid(atRow)
-        self.table.removeRow(atRow)
-        self._removeButtons.pop(atRow)
+        row = self._rButtons.index(self.sender())
+        valid = self.isValid(row)
+        self.table.removeRow(row)
+        self._rButtons.remove(self.sender())
         if ( self.table.rowCount() <= 1 ):
             self.removeAllButton.setEnabled(False)
         if ( valid ):
@@ -345,9 +333,9 @@ class BakeOutProgrammerTab(UiTab):
         valid = False
         while ( self.table.rowCount() > 1  ):
             if ( not valid ):
-                valid = self.isStepValid(0)
+                valid = self.isValid(0)
             self.table.removeRow(0)
-        self._removeButtons = []
+        self._rButtons = []
         self.removeAllButton.setEnabled(False)
         if ( valid ):
             self.setModified(True)
@@ -361,12 +349,14 @@ class BakeOutProgrammerTab(UiTab):
         modelObj = self.getModelObj()
         if ( modelObj ):
             self.setModified(False)
+            self.currentProgressBar.reset()
+            self.overallProgressBar.reset()            
             self.resetPressureModel()
             self.graphPlot.resetModel()
             self.listener().setModel("/Temperature_All")
-            channels = self.channels()
-            modelObj.write_attribute("Program_%s" % self.number(), self.program())
-            modelObj.write_attribute("Program_%s_Zones" % self.number(), channels)
+            zones = self.zones()
+            modelObj.write_attribute("Program_%s" % self.number(), self._program)
+            modelObj.write_attribute("Program_%s_Zones" % self.number(), zones)
             self.updateProgram()
         
 #    onSaveButton_clicked()
@@ -378,12 +368,14 @@ class BakeOutProgrammerTab(UiTab):
         if ( modelObj ):
             self.setStarted(True)
             self.setRunning(True)
-            modelObj.Start(self.number())
+            self.currentProgressBar.reset()
+            self.overallProgressBar.reset()
+            modelObj.Start(self._number)
             self.listener().setModel("/Program_%s_Params" % self.number())
             self.updateProgram()
             self.togglePressureCurve(True)
-            for channel in self.channels():
-                self.toggleTempCurve(channel, True)
+            for zone in self.zones():
+                self.toggleTempCurve(zone, True)
         
 #    onStartButton_clicked()
 
@@ -393,164 +385,224 @@ class BakeOutProgrammerTab(UiTab):
         modelObj = self.getModelObj()
         if ( modelObj ):
             self.setRunning(False)
-            modelObj.Stop(self.number())
+            modelObj.Stop(self._number)
             self.updateProgram()
             
 #    on_stopButton_clicked()
 
     def on_table_itemChanged(self, item):
         self.debug("on_table_itemChanged()")
-        atRow = self.table.row(item)
-        if ( self.isStepValid(atRow) ):
+        row = self.table.row(item)
+        if ( self.isValid(row) ):
             self.setModified(True)
             self.updateProgram()
 
 #    on_table_itemChanged()
 
-    def on_channelCheckBox1_stateChanged(self, state):
+    def on_zoneCheckBox1_stateChanged(self, state):
         self.on_checkBox_stateChanged(1, state)    
     
-#    on_channelCheckBox1_stateChanged()
+#    on_zoneCheckBox1_stateChanged()
     
-    def on_channelCheckBox2_stateChanged(self, state):
+    def on_zoneCheckBox2_stateChanged(self, state):
         self.on_checkBox_stateChanged(2, state)    
     
-#    on_channelCheckBox2_stateChanged()
+#    on_zoneCheckBox2_stateChanged()
     
-    def on_channelCheckBox3_stateChanged(self, state):
+    def on_zoneCheckBox3_stateChanged(self, state):
         self.on_checkBox_stateChanged(3, state)    
     
-#    on_channelCheckBox3_stateChanged()
+#    on_zoneCheckBox3_stateChanged()
     
-    def on_channelCheckBox4_stateChanged(self, state):
+    def on_zoneCheckBox4_stateChanged(self, state):
         self.on_checkBox_stateChanged(4, state)    
     
-#    on_channelCheckBox4_stateChanged()
+#    on_zoneCheckBox4_stateChanged()
     
-    def on_channelCheckBox5_stateChanged(self, state):
+    def on_zoneCheckBox5_stateChanged(self, state):
         self.on_checkBox_stateChanged(5, state)    
     
-#    on_channelCheckBox5_stateChanged()
+#    on_zoneCheckBox5_stateChanged()
     
-    def on_channelCheckBox6_stateChanged(self, state):
+    def on_zoneCheckBox6_stateChanged(self, state):
         self.on_checkBox_stateChanged(6, state)    
     
-#    on_channelCheckBox6_stateChanged()
+#    on_zoneCheckBox6_stateChanged()
     
-    def on_channelCheckBox7_stateChanged(self, state):
+    def on_zoneCheckBox7_stateChanged(self, state):
         self.on_checkBox_stateChanged(7, state)    
     
-#    on_channelCheckBox7_stateChanged()
+#    on_zoneCheckBox7_stateChanged()
     
-    def on_channelCheckBox8_stateChanged(self, state):
+    def on_zoneCheckBox8_stateChanged(self, state):
         self.on_checkBox_stateChanged(8, state)    
     
-#    on_channelCheckBox8_stateChanged()
+#    on_zoneCheckBox8_stateChanged()
     
-    def on_checkBox_stateChanged(self, channel, state):
-        self.debug("on_checkBox_stateChanged()\tchannel: %s\tstate: %s" % (channel, state))
+    def on_checkBox_stateChanged(self, zone, state):
+        self.debug("on_checkBox_stateChanged()\tzone: %s\tstate: %s" % (zone, state))
         self.setModified(True)
-        self.setChannelState(channel, state)
+        self.setZoneState(zone, state)
         if ( isinstance(self.window(), BakeOutProgrammerMainWindow) ):
-            self.window().setChannelState(channel, state)
-            self.window().setChannelsDisabled(channel)
-        self.channelOutput(channel).setEnabled(state)
-#        self.channelLimit(channel).setEnabled(state)
+            self.window().setZoneState(zone, state)
+            self.window().setZonesDisabled(zone)
+        self.zoneValueLabel(zone).setEnabled(state)
+#        self.zoneSpinBox(zone).setEnabled(state)
         if ( state ):
-            self.channelOutput(channel).setModel("/Output_%s" % channel)
-#            self.channelLimit(channel).setModel("/Output_%s_Limit" % channel)            
+            self.zoneValueLabel(zone).setModel("/Output_%s" % zone)
+#            self.zoneSpinBox(zone).setModel("/Output_%s_Limit" % zone)            
         else:
-            self.channelOutput(channel).resetModel()
-#            self.channelLimit(channel).resetModel()      
+            self.zoneValueLabel(zone).resetModel()
+#            self.zoneSpinBox(zone).resetModel()      
         self.updateTabText()
         self.updateProgram()
-        self.toggleTempCurve(channel, state)
+        self.toggleTempCurve(zone, state)
             
-#    on_checkBox_stateChanged()
- 
-    def listener(self):
-        return self._listener
-    
-#    listener()
-  
-    def program(self):
-        return self._program
-    
-#    program()
+#    on_zoneCheckBox8_stateChanged()
    
-    def setProgram(self, value):
-        self._program = value
+    def setProgram(self, program):
+        self.debug("setProgram()")
+        self.disconnect(self.table,
+                        QtCore.SIGNAL("itemChanged(QTableWidgetItem*)"),
+                        self.on_table_itemChanged)
+        for atRow, stepData in enumerate(program):
+            self.addRow()
+            for atCol, itemData in enumerate(stepData):
+                if ( atCol == 3 ): continue
+                self.table.item(atRow, atCol).setText(str(itemData))
+        self.connect(self.table,
+                    QtCore.SIGNAL("itemChanged(QTableWidgetItem*)"),
+                    self.on_table_itemChanged)                
                 
 #    setProgram()
 
+    def currentStep(self):
+        return self._cStep
+    
+#    currentStep()
+
+    def setCurrentStep(self, value):
+        if ( value <= self.stepCount() ):        
+            self._cStep = int(value)
+        raise IndexError
+        
+#    setCurrentStep()
+
+    def nextStep(self):
+        if ( self._cStep + 1 <= self.stepCount() ):
+            self._cStep += 1
+        raise IndexError
+    
+#    nextStep()
+
+    def stepCount(self):
+        return self._sCount
+    
+#    stepCount()
+
+    def setStepCount(self, value):
+        self._sCount = int(value)
+        
+#    setStepCount()
+
+    def resetStepCount(self):
+        self._sCount = 0
+        
+#    resetStepCount()
+
+    def expectedFinishTime(self):
+        return self._eFTime
+    
+#    expectedFinishTime()
+
+    def setExpectedFinishTime(self, t):
+        self._eFTime = t
+        
+#    setExpectedFinishTime()
+
+    def setExcpectedStepFinishTimes(self, t):
+        self._eSFTimes = t
+        
+#    setExpectedStepFinishTime()
+
+    def currentStepStartTime(self):
+        return self._eSFTimes[(self.currentStep() - 1) * 2]
+    
+#    stepStartTime()
+
+    def currentStepExpectedFinishTime(self):
+        return self._eSFTimes[(self.currentStep()) * 2]
+    
+#    currentStepExpectedFinishTime()
+
     def resetPressureModel(self):
-        self._pressureModel = ""
+        self._pModel = ""
         
 #    resetPressureModel()
   
     def setPressureModel(self, model):
-        self._pressureModel = str(model)
+        self._pModel = str(model)
         
 #    setPressureModel()
   
     def pressureModel(self):
-        return self._pressureModel
+        return self._pModel
     
 #    pressureModel()
   
     def startTemp(self):
-        return self._startTemp
+        return self._sTemp
     
 #    startTemp()
 
     def setStartTemp(self, temp):
-        if ( self._startTemp != temp ):
-            self._startTemp = temp
+        if ( self._sTemp != temp ):
+            self._sTemp = temp
             return True
         return False
             
 #    setStartTemp()
 
     def startTime(self):
-        return self._startTime
+        return self._sTime
     
 #    startTime()
 
     def setStartTime(self, time):
-        if ( self._startTime != time ):
-            self._startTime = time
+        if ( self._sTime != time ):
+            self._sTime = time
             return True
         return False
             
 #    setStartTemp()
 
     def resetStartTime(self):
-        if ( self._startTime ):
-            self._startTime = 0.
+        if ( self._sTime ):
+            self._sTime = 0.
             
 #    resetStartTime()
 
     def finishTime(self):
-        return self._finishTime
+        return self._fTime
     
 #    finishTime()
 
     def setFinishTime(self, time):
-        if ( self._finishTime != time ):
-            self._finishTime = time
+        if ( self._fTime != time ):
+            self._fTime = time
             return True
         return False
             
 #    setFinishTime()
 
     def pauseTime(self):
-        return self._pauseTime
+        return self._pTime
     
 #    pauseTime()
 
     def setPauseTime(self, time):
-        if ( self._pauseTime != time ):
-            self._pauseTime = time
+        if ( self._pTime != time ):
+            self._pTime = time
             
 #    setPauseTime()
 
@@ -558,51 +610,41 @@ class BakeOutProgrammerTab(UiTab):
         return self._number
     
 #    number()
-
-    def setNumber(self, value):
-        self._number = value
-        
-#    setNumber()
  
-    def channels(self):
-        return [z for z in range(1, 9) if self.channelState(z)]
+    def zones(self):
+        return [z for z in range(1, 9) if self.zoneState(z)]
     
-#    channels()
+#    zones()
       
-    def channelState(self, channel):
-        return self._channelStates[channel - 1]
+    def zoneState(self, zone):
+        return self._zStates[zone - 1]
     
-#    channelState()
+#    zoneState()
+    
+    def zoneCheckBox(self, zone):
+        return self._zCBoxes[zone - 1]
+    
+#    zoneCheckBox()
+  
+    def zoneGroupBox(self, zone):
+        return self._zGBoxes[zone - 1]
+    
+#    zoneGroupBox()
+  
+    def zoneSpinBox(self, zone):
+        return self._zSBoxes[zone - 1]
+    
+#    zoneSpinBox()
    
-    def setChannelState(self, channel, state):
-        self._channelStates[channel - 1] = state
+    def zoneValueLabel(self, zone):
+        return self._zValues[zone - 1]
+    
+#    zoneValueLabel()
+ 
+    def setZoneState(self, zone, state):
+        self._zStates[zone - 1] = state
         
-#    setChannelState()
-   
-    def channelGroupBox(self, channel):
-        return self._cGroupBoxes[channel - 1]
-    
-#    channelGroupBox()
-   
-    def channelCheckBox(self, channel):
-        return self._cCheckBoxes[channel - 1]
-    
-#    channelCheckBox()
-
-    def channelTemp(self, channel):
-        return self._cTemps[channel - 1]
-    
-#    channelTemp()
-
-    def channelLimit(self, channel):
-        return self._cLimits[channel - 1]
-    
-#    channelLimit()
-   
-    def channelOutput(self, channel):
-        return self._cOutputs[channel - 1]
-    
-#    channelOutput()
+#    setZoneState()
 
     def isRunning(self):
         return self._state[2]
@@ -642,47 +684,42 @@ class BakeOutProgrammerTab(UiTab):
         
 #    setStarted()
 
-    def loadProgram(self, number, program, channels):
+    def listener(self):
+        return self._listener
+    
+#    listener()
+
+    def loadProgram(self, number, program, zones):
         self.debug("loadProgram()")
-        self.setNumber(number)
+        self._number = number
         modelObj = self.getModelObj()
         if ( modelObj ):
-            self.disconnect(self.table,
-                            QtCore.SIGNAL("itemChanged(QTableWidgetItem*)"),
-                            self.on_table_itemChanged)
-            for atRow, stepData in enumerate(program):
-                self.addRow()
-                for atCol, itemData in enumerate(stepData):
-                    if ( atCol == 3 ): continue
-                    self.table.item(atRow, atCol).setText(str(itemData))
-            self.connect(self.table,
-                        QtCore.SIGNAL("itemChanged(QTableWidgetItem*)"),
-                        self.on_table_itemChanged)  
-            params = modelObj.getAttribute("Program_%s_Params" % self.number()).read().value.tolist()
+            params = modelObj.getAttribute("Program_%s_Params" % self._number).read().value.tolist()
             if ( params[3] ):
                 self.setRunning(False)
             if ( params[1] ):
                 self.setStarted(True)
                 self.setRunning(True)
-                self.listener().setModel("/Program_%s_Params" % self.number())          
-            if ( channels ):
-                for channel in channels:
-                    self.channelCheckBox(channel).setCheckState(QtCore.Qt.Checked)
-                self.setModified(False)
+                self.listener().setModel("/Program_%s_Params" % self._number)          
+            if ( zones ):
+                for zone in zones:
+                    self.zoneCheckBox(zone).setCheckState(QtCore.Qt.Checked)
             else:
                 self.updateTabText()
+            self.setModified(False)
+            self.setProgram(program)
             self.updateProgram()
         
 #    loadProgram()
 
-    def setChannelDisabled(self, channel=None):
+    def setZoneDisabled(self, zone=None):
         if ( isinstance(self.window(), BakeOutProgrammerMainWindow) ):        
-            for channel in channel and (channel,) or range(1, 9):
-                checkBox = self.channelCheckBox(channel)
+            for zone in zone and (zone,) or range(1, 9):
+                checkBox = self.zoneCheckBox(zone)
                 if ( not checkBox.isChecked() ):
-                    self.channelGroupBox(channel).setDisabled(self.window().channelState(channel))
+                    self.zoneGroupBox(zone).setDisabled(self.window().zoneState(zone))
 
-#    setChannelDisabled()
+#    setZoneDisabled()
 
     def updateButtons(self):
         self.debug("updateButtons()")
@@ -722,23 +759,45 @@ class BakeOutProgrammerTab(UiTab):
                     double, ok = item.text().toDouble()
                     if ( ok ):
                         step.append(double)
-            if ( len(step) == 3 ):
+            
+            if ( len(step) == self.table.columnCount() - 1 ):
                 program.append(step)
-        self.setProgram(program or [PROGRAM_DEFAULT])
+        
+        self._program = program or [PROGRAM_DEFAULT]
         self.updateProgramCurve()
 
 #    updateProgram()
+
+    def updateTabText(self):
+        self.debug("updateTabText()")
+        if ( isinstance(self.window(), BakeOutProgrammerMainWindow) ):
+            tabWidget = self.window().tabWidget
+            currentIndex = tabWidget.indexOf(self)
+    
+            zones = map(str, self.zones())
+            self.reduceZones(zones)
+            tabText = "Program " + str(self._number) +\
+                   ((" [Zones " if ( len(zones) > 1 or len(zones[0]) > 1 ) else " [Zone ") +\
+                   ", ".join(zones) + "]" if ( len(zones) > 0 ) else "")
+                   
+            tabWidget.setTabText(currentIndex, tabText)
+        
+#    updateTabText()
 
     def updateProgramCurve(self):
         self.debug("updateProgramCurve()")
         rawData = self.toRawData(self._program, self.startTime(), self.startTemp())
         if ( rawData != [PROGRAM_DEFAULT] ):
-            xData, yData = rawData
+            self.setStepCount((len(rawData[0]) - 1) / 2)
+            self.setExpectedFinishTime(rawData[0][-1])
+            self.setExcpectedStepFinishTimes(rawData[0])
+            xData, yData = rawData[0], rawData[1]
             if ( self.graphPlot.getCurve("Program") ):
                 self.graphPlot.getCurve("Program").setData(xData, yData)
             else:
                 self.graphPlot.attachRawData(dict(zip(("title", "x", "y"), ("Program", xData, yData))))
         else:
+            self.resetStepCount()
             if ( self.graphPlot.getCurve("Program") ):
                 self.graphPlot.detachRawData("Program")
                 
@@ -747,52 +806,39 @@ class BakeOutProgrammerTab(UiTab):
 #    updateProgramCurve()
 
     def updateProgressBars(self):
+        return
         self.debug("updateProgressBar()")
+        sStartTime = self.stepStartTime()
+        if ( self.currentProgressBar.minimum() != sStartTime ):
+            self.currentProgressBar.setMinimum(sStartTime)
+        sFinishTime = self.stepFinishTime()
+        if ( self.currentProgressBar.maximum() != sFinishTime ):
+            self.currentProgressBar.setMaximum(sFinishTime)
+        sTime = self.startTime()        
+        if ( self.overallProgressBar.minimum() != sTime ):
+            self.overallProgressBar.setMinimum(sTime)
+        fTime = self.expectedFinishTime()
+        if ( self.overallProgressBar.maximum() != fTime ):
+            self.overallProgressBar.setMaximum(fTime)
         if ( self.isRunning() ):
             now = QtCore.QDateTime().currentDateTime().toTime_t()
             self.currentProgressBar.setValue(now)
             self.overallProgressBar.setValue(now)
-        elif ( self.isStarted() ):
+        else:
             fTime = self.finishTime()
             if ( self.currentProgressBar.value() != fTime ):
                 self.currentProgressBar.setValue(fTime)
             if ( self.overallProgressBar.value() != fTime ):
                 self.overallProgressBar.setValue(fTime)
-        else:
-            self.currentProgressBar.reset()
-            self.overallProgressBar.reset()
         
 #    updateProgressBars()      
 
-    def updateTabText(self):
-        self.debug("updateTabText()")
-        if ( isinstance(self.window(), BakeOutProgrammerMainWindow) ):
-            tabWidget = self.window().tabWidget
-            currentIndex = tabWidget.indexOf(self)
-            channels = self.reduceChannels(map(str, self.channels()))
-            tabText = "Program " + str(self.number()) +\
-                   ((" [Channels " if ( len(channels) > 1 or len(channels[0]) > 1 ) else " [Channel ") +\
-                   ", ".join(channels) + "]" if ( len(channels) > 0 ) else "")
-            tabWidget.setTabText(currentIndex, tabText)
-        
-#    updateTabText()
-
-    def reduceChannels(self, strChannels):
-        for i in range(len(strChannels) - 1):
-            if ( (int(strChannels[i + 1][0]) - int(strChannels[i][-1])) == 1 ):
-                strChannels[i + 1] = strChannels[i][0] + "-" + strChannels[i + 1]
-                strChannels.pop(i)
-                return self.reduceChannels(strChannels)
-        return strChannels
-
-#    reduceChannels()
-
-    def toggleTempCurve(self, channel, on):
-        self.debug("toggleTempCurve()\tchannel: %s\ton: %s" % (channel, on))
+    def toggleTempCurve(self, zone, on):
+        self.debug("toggleTempCurve()\tzone: %s\ton: %s" % (zone, on))
         if ( self.isStarted() ):
             modelObj = self.getModelObj()
             if ( modelObj ): 
-                model = "%s/Temperature_%s" % (modelObj.getNormalName(), channel)
+                model = "%s/Temperature_%s" % (modelObj.getNormalName(), zone)
                 if ( on ):
                     self.graphPlot.addModels([model])
                 else:
@@ -815,10 +861,9 @@ class BakeOutProgrammerTab(UiTab):
             if ( model ):
                 if ( on ):
                     self.graphPlot.addModels([model])
-                    self.graphPlot.setCurvesYAxis([model + "[0]"], Qwt.QwtPlot.yRight)
+                    self.graphPlot.setCurvesYAxis(["%s[0]" % model], Qwt.QwtPlot.yRight)
                 else:
                     self.graphPlot.removeModels([model])
-
             
 #    togglePressureCurve()
    
@@ -827,14 +872,15 @@ class BakeOutProgrammerTab(UiTab):
 
         atRow = self.table.rowCount() - 1
         self.table.insertRow(atRow)
+        
         for atCol in range(4):
             if ( atCol == 3 ):
                 removeButton = QtGui.QPushButton("Remove")
                 self.table.setCellWidget(atRow, atCol, removeButton)
+                self._rButtons.append(removeButton)
                 self.connect(removeButton,
                              QtCore.SIGNAL("clicked()"),
                              self.on_removeButton_clicked)
-                self._removeButtons.append(removeButton)
             else:
                 item = QtGui.QTableWidgetItem()
                 item.setTextAlignment(QtCore.Qt.AlignRight\
@@ -853,13 +899,14 @@ class BakeOutProgrammerTab(UiTab):
         a = abs(step[1])
         x1 = x0 + 60. * abs(y0 - y) / a
         x2 = x1 + 3600. * step[2]
+
         return map(long, (x1, x2)), (y, y)
 
 #    toRawStepData()
 
-    def toRawData(self, program, x0=long(0), y0=TEMP_ROOM):
+    def toRawData(self, program, x0=0., y0=TEMP_ROOM):
         if ( program == [PROGRAM_DEFAULT] ):
-            return program
+            return [PROGRAM_DEFAULT]
         if ( y0 >= TEMP_DEFAULT ):
             y0 = TEMP_ROOM
         try:
@@ -878,12 +925,24 @@ class BakeOutProgrammerTab(UiTab):
 
 #    toRawData()
 
-    def isStepValid(self, row):
-        self.debug("isStepValid()\trow: %s" % row)
+    def reduceZones(self, strZones):
+        for i in range(len(strZones) - 1):
+            if ( (int(strZones[i + 1][0]) - int(strZones[i][-1])) == 1 ):
+                strZones[i + 1] = strZones[i][0] + "-" + strZones[i + 1]
+                strZones.pop(i)
+                return self.reduceZones(strZones)
+
+#    reduceZones()
+
+    def isValid(self, row):
+        self.debug("isValid()\trow: %s" % row)
         rowItems = (self.table.item(row, col) for col in range(self.table.columnCount() - 1))
-        return all([ok[1] for ok in (item.text().toDouble() for item in rowItems)])
+        ok = [result[1] for result in (item.text().toDouble() for item in rowItems)]
+        if ( all(ok) ):
+            return True
+        return False
     
-#    isStepValid()
+#    isValid()
 
     def addPressureComboItems(self):
         db = Database()
@@ -961,21 +1020,21 @@ class BakeOutProgrammerListener(TauBaseListener):
     
     def __init__(self, parent):
         TauBaseListener.__init__(self, parent)
-        self.insertEventFilter(self.valueChangedFilter)
+        self.insertEventFilter(self.evtFilter)
                                  
 #    __init__()
 
-    def valueChangedFilter(self, src, type, value):
+    def evtFilter(self, src, type, value):
         if ( type in (TauEventType.Change, TauEventType.Periodic) ):
             return src, type, value
         
-#    valueChangedFilter()
+#    eventFilter()
                                  
     def handleEvent(self, src, type, value):
-        if ( value ):
+        try:
             self.emit(QtCore.SIGNAL("valueChanged(PyQt_PyObject)"), value.value.tolist())
-        else:
-            self.warning("Unexpected event value: %s" % value)
+        except AttributeError :
+            self.error("AttributeError")
                         
 #    handleEvent()
     
