@@ -1,18 +1,21 @@
 from __future__ import division
-from PyQt4 import QtCore, QtGui, Qwt5 as Qwt
+from PyQt4 import Qt, QtCore, QtGui, Qwt5 as Qwt
 from Ui_BakeOutProgrammer import *
-from PyTango import Database, DevFailed
-from PyTangoArchiving.widget import ContextToolBar
+from PyTango import Database, DevFailed, DevState
+from PyTangoArchiving.widget.snaps import ContextToolBar
 import tau
+import time
 tau.setLogLevel(0)
 from tau.core import TauEventType, TauAttribute
 from tau.widget import TauBaseComponent, TauMainWindow, TauValueLabel, TauValueSpinBox, TauWidget, TauValue 
 from tau.widget.qwt import TauTrend
 
+import traceback
+
 TEMP_ROOM = 25.
 TEMP_DEFAULT = 1200.
 POLLING_PERIOD = 10000
-PROGRAM_DEFAULT = [TEMP_DEFAULT, 0., -1.]
+PROGRAM_DEFAULT = [TEMP_DEFAULT, 0.,-1.]
 PARAMS_DEFAULT = [TEMP_DEFAULT, 0., 0., 0.]
 
 def changePollingPeriodForAttribute(attribute,period=POLLING_PERIOD):
@@ -31,6 +34,7 @@ def getFullModelName(listener):
 class BakeOutProgrammerMainWindow(UiMainWindow):
     def __init__(self, parent=None, flags=0):
         UiMainWindow.__init__(self, parent, flags)
+
         self._numbers = set()
         self._channelStates = [QtCore.Qt.Unchecked]*8
 
@@ -56,7 +60,15 @@ class BakeOutProgrammerMainWindow(UiMainWindow):
         self.info("In on_controllerCombo_currentIndexChanged)\tdevModel: %s" % devModel)
         self.reset()
         self.setModel(devModel)
+        self.controllerState.setModel(devModel+'/State')
+        self.controllerState.setAlignment(Qt.Qt.AlignCenter)
         modelObj = self.getModelObj()
+        try: 
+            dev_state = self.modelObj.State()
+            running = dev_state in (DevState.ON,DevState.RUNNING,DevState.ALARM)
+        except Exception,e:
+            print 'Unable to read %s state: %s'%(self.getModelName(),e)
+            running = False
         if ( modelObj ):
             self.tabWidget.setEnabled(True)
             programs = []
@@ -64,6 +76,18 @@ class BakeOutProgrammerMainWindow(UiMainWindow):
                 try:
                     try:
                         program = modelObj.getAttribute("Program_%s" % number).read().value.tolist()
+                        if program in ([],None,[PROGRAM_DEFAULT]):
+                            program = [PROGRAM_DEFAULT]
+                            try: 
+                                prop = [s.split(':')[-1] for s in modelObj.get_property('programs')['programs'] if s.startswith('%d:'%number)]
+                                if prop:
+                                    print '\tloading last %d program from properties ...'%number
+                                    raw = [float(s.strip()) for p in prop for s in p.split(',')]
+                                    program = [raw[i:i+3] for i in range(len(raw))[::3]]
+                                else: print '\t\tno %d program found'%number
+                            except:
+                                print '\unable to load last program'
+                                print traceback.format_exc()
                     except AttributeError:
                         continue
                     try:
@@ -81,6 +105,11 @@ class BakeOutProgrammerMainWindow(UiMainWindow):
             
         if ( not self.tabWidget.count() ):
             self.tabAddRequest()
+            try:
+                tab = self.tabWidget.currentWidget()
+                tab.setRunning(running)
+            except:
+                print traceback.format_exc()
             
         #srubio@cells.es: being sure that polling periods are adjusted:
         changePollingPeriodForAttribute(devModel+'/Temperature_All')
@@ -88,6 +117,10 @@ class BakeOutProgrammerMainWindow(UiMainWindow):
         self.info("Out of on_controllerCombo_currentIndexChanged)\tdevModel: %s" % devModel)
 #    on_deviceCombo_currentIndexChanged()
  
+    def on_controllerStatus_pressed(self):
+        qmsg = Qt.QMessageBox(Qt.QMessageBox.Information,'%s Status'%self.getModelName(),str(self.getModelObj().Status()),Qt.QMessageBox.Ok,self)
+        qmsg.show()
+        
     @QtCore.pyqtSignature("")
     def on_newProgramButton_clicked(self):
         self.tabAddRequest()      
@@ -131,12 +164,12 @@ class BakeOutProgrammerMainWindow(UiMainWindow):
         if ( programs ):
             for tabIndex, (number, program, channels) in enumerate(programs):                   
                 if ( not self.tabWidget.widget(tabIndex) ):
-                    if ( not self.tabAddRequest() ):
-                        break                 
+                    tab = self.tabAddRequest() 
+                    if not tab:
+                        break
                 self.tabWidget.widget(tabIndex).loadProgram(number, program, channels)
-                
             self.updateNumbers()
-                    
+
 #    loadPrograms()
 
     def reset(self):
@@ -242,14 +275,16 @@ class BakeOutProgrammerTab(UiTab):
         self._finishTime = long(0)
         self._state = [False, False, False]
         
+        print 'In BakeIOutProgrammerListener.__init__()'
         self._listener = BakeOutProgrammerListener(self)
         self._listener.setUseParentModel(True)
         self._listener.setModel("/Temperature_All")
-        
         self.addPressureComboItems()
         for channel in range(1, 9):
             self.channelTemp(channel).setUseParentModel(True)
+            self.channelTempSp(channel).setUseParentModel(True)
             self.channelTemp(channel).setModel("/Temperature_%s" % channel)
+            self.channelTempSp(channel).setModel("/Temperature_%s_Setpoint" % channel)
         
         self.connect(self._listener,
                      QtCore.SIGNAL("valueChanged(PyQt_PyObject)"),
@@ -284,27 +319,26 @@ class BakeOutProgrammerTab(UiTab):
 #    on_addButton_clicked()
 
     def on_listener_valueChanged(self, value):
-        self.debug("on_paramsChanged()")
-
         l = len(value)
         if ( l == 4 ):
+            self.debug("on_paramsChanged(%s)"%str(value))
+            dev_state = self.getModelObj().State()
+            running = dev_state in (DevState.ON,DevState.RUNNING,DevState.ALARM)
+            self.debug("device state is %s"%dev_state)
             change = self.setStartTemp(value[0]), self.setStartTime(value[1]), self.setPauseTime(value[2]), self.setFinishTime(value[3])
             
             if ( any(change) ):
-                if ( self.startTime() ):
+                if ( self.startTime()  and not self.finishTime()):
                     self.setStarted(True)
-                    running = True
+                    self.setRunning(True)
                 else:
                     self.setStarted(False)
-                    running = False        
-                if ( self.finishTime() ):
-                    self.setRunning(False)
-                else:
                     self.setRunning(running)
         
                 self.updateProgram()
             self.updateProgressBars()
         elif ( l == 8 ):
+            self.debug("on_TemperatureAllChanged(%s)"%str(value))
             temps = [value[z - 1] for z in self.channels() if value[z - 1] != TEMP_DEFAULT]
             dTemps = [abs(self.program()[0][0] - t) for t in temps]
             sTemp = dTemps and temps[dTemps.index(max(dTemps))] or TEMP_DEFAULT
@@ -400,14 +434,18 @@ class BakeOutProgrammerTab(UiTab):
         self.debug("on_startButton_clicked")       
         modelObj = self.getModelObj()
         if ( modelObj ):
-            self.setStarted(True)
-            self.setRunning(True)
-            modelObj.Start(self.number())
-            self.listener().setModel("/Program_%s_Params" % self.number())
-            self.updateProgram()
-            self.togglePressureCurve(True)
-            for channel in self.channels():
-                self.toggleTempCurve(channel, True)
+            try:
+                modelObj.Start(self.number())
+                self.setStarted(True)
+                self.setRunning(True)
+                self.listener().setModel("/Program_%s_Params" % self.number())
+                self.updateProgram()
+                self.togglePressureCurve(True)
+                for channel in self.channels():
+                    self.toggleTempCurve(channel, True)
+            except Exception,e:
+                qmsg = Qt.QMessageBox(Qt.QMessageBox.Critical,'%s.Start() Error'%self.getModelName(),str(e),Qt.QMessageBox.Ok,self)
+                qmsg.show()
         
 #    onStartButton_clicked()
 
@@ -416,9 +454,23 @@ class BakeOutProgrammerTab(UiTab):
         self.debug("on_stopButton_clicked")
         modelObj = self.getModelObj()
         if ( modelObj ):
-            self.setRunning(False)
-            modelObj.Stop(self.number())
-            self.updateProgram()
+            try:
+                if self.program() and self.program()!=[PROGRAM_DEFAULT]:
+                    modelObj.Stop(self.number())
+                else:
+                    channels = self.channels()
+                    v = QtGui.QMessageBox.warning(None,'BakeOutProgrammer', \
+                        'No program is selected, zones %s will be switched off instead'%channels, \
+                        QtGui.QMessageBox.Ok|QtGui.QMessageBox.Cancel);
+                    if v == QtGui.QMessageBox.Cancel:
+                        return
+                    for channel in channels:
+                        modelObj.Stop(self.number())
+                self.setRunning(False)
+                self.updateProgram()
+            except Exception,e:
+                qmsg = Qt.QMessageBox(Qt.QMessageBox.Critical,'%s.Stop() Error'%self.getModelName(),str(e),Qt.QMessageBox.Ok,self)
+                qmsg.show()            
             
 #    on_stopButton_clicked()
 
@@ -617,6 +669,9 @@ class BakeOutProgrammerTab(UiTab):
     def channelTemp(self, channel):
         return self._cTemps[channel - 1]
     
+    def channelTempSp(self, channel):
+        return self._cTempsSp[channel - 1]
+    
 #    channelTemp()
 
     def channelLimit(self, channel):
@@ -635,9 +690,9 @@ class BakeOutProgrammerTab(UiTab):
 #    isRunning()
         
     def setRunning(self, yesno):
-        if ( self._state[2] != yesno ):        
-            self._state[2] = yesno
-            self.updateButtons()
+        self.debug('setRunning(%s)'%yesno)
+        self._state[2] = yesno
+        self.updateButtons()
         
 #    setRunning
 
@@ -647,11 +702,9 @@ class BakeOutProgrammerTab(UiTab):
 #    isModified
   
     def setModified(self, yesno):
-        if ( self._state[0] != yesno and not self._state[2] ):
-            self._state[0] = yesno
-            if ( yesno ):
-                self._state[1] = self._state[2] = False
-            self.updateButtons()
+        self.debug('setModified(%s)'%yesno)
+        self._state[0] = yesno
+        self.updateButtons()
         
 #    setModified()
  
@@ -661,9 +714,9 @@ class BakeOutProgrammerTab(UiTab):
 #    isStarted()
  
     def setStarted(self, yesno):
-        if ( self._state[1] != yesno ):        
-            self._state[1] = yesno
-            self.updateButtons()
+        self.debug('setStarted(%s)'%yesno)
+        self._state[1] = yesno
+        self.updateButtons()
         
 #    setStarted()
 
@@ -684,18 +737,24 @@ class BakeOutProgrammerTab(UiTab):
                         QtCore.SIGNAL("itemChanged(QTableWidgetItem*)"),
                         self.on_table_itemChanged)  
             params = modelObj.getAttribute("Program_%s_Params" % self.number()).read().value.tolist()
-            if ( params[3] ):
-                self.setRunning(False)
-            if ( params[1] ):
-                self.setStarted(True)
-                self.setRunning(True)
-                self.listener().setModel("/Program_%s_Params" % self.number())          
+            dev_state = modelObj.State()
+            running = dev_state in (DevState.ON,DevState.RUNNING,DevState.ALARM)
+            started,finished = params[1],params[3]
+            if ( finished ): #finished != 0
+                self.setStarted(False)
+                #Running will be True if the device is not programmed and some channels are ON
+                self.setRunning(dev_state == DevState.ON)
+            else:
+                self.setStarted(bool(started))
+                self.setRunning(bool(started or running))
+                self.listener().setModel("/Program_%s_Params" % self.number())
             if ( channels ):
                 for channel in channels:
                     self.channelCheckBox(channel).setCheckState(QtCore.Qt.Checked)
                 self.setModified(False)
             else:
                 self.updateTabText()
+                self.setModified(True)
             self.updateProgram()
         
 #    loadProgram()
@@ -711,9 +770,9 @@ class BakeOutProgrammerTab(UiTab):
 
     def updateButtons(self):
         self.debug("updateButtons()")
-        self.setTableItemsEditable(not self.isRunning())
+        self.setTableItemsEditable(not self.isStarted())
         self.saveButton.setEnabled(self.isModified())
-        self.startButton.setDisabled(self.isModified() or self.isRunning())
+        self.startButton.setEnabled(not self.isModified() and not self.isStarted())
         self.stopButton.setEnabled(self.isRunning())
   
 #    updateButtons()
@@ -771,18 +830,40 @@ class BakeOutProgrammerTab(UiTab):
             
 #    updateProgramCurve()
 
+    def getStepTime(self,c):
+        """ This method returns the amount of time in seconds needed to complete an step """
+        step = self.program()[c]
+        temp,ramp,timeout = step
+        if c>0:
+            return 60. * (60. * timeout + abs(self.program()[c-1][0] - temp) / ramp)
+        else:
+            return 60. * (60. * timeout + abs(self.startTemp() - temp) / ramp)
+
     def updateProgressBars(self):
         self.debug("updateProgressBar()")
-        if ( self.isRunning() ):
-            now = QtCore.QDateTime().currentDateTime().toTime_t()
-            self.currentProgressBar.setValue(now)
-            self.overallProgressBar.setValue(now)
-        elif ( self.isStarted() ):
-            fTime = self.finishTime()
-            if ( self.currentProgressBar.value() != fTime ):
-                self.currentProgressBar.setValue(fTime)
-            if ( self.overallProgressBar.value() != fTime ):
-                self.overallProgressBar.setValue(fTime)
+        #now = QtCore.QDateTime().currentDateTime().toTime_t()
+        now = time.time()
+        sTime = self.startTime()
+        program = self.program()
+        cStep = [i for i,s in enumerate(program) if sum([sTime]+[self.getStepTime(x) for x in range(i)])<now][-1]
+        self.debug('\tCurrent step is %s'%(cStep+1))
+        cTime = sTime+sum([self.getStepTime(i) for i in range(cStep)]) or sTime
+        xTime = sTime+sum([self.getStepTime(s) for s in range(cStep+1)])
+        fTime = sTime+sum([self.getStepTime(s) for s in range(len(program))])#self.finishTime()
+        if ( self.isStarted() ):
+            self.debug('\tprogress = %s - %s - %s - %s - %s - %s'%(cStep+1,sTime,cTime,now,xTime,fTime))
+            self.currentProgressBar.setMinimum(cTime)
+            self.currentProgressBar.setMaximum(xTime)
+            self.overallProgressBar.setMinimum(sTime)
+            self.overallProgressBar.setMaximum(fTime)
+            if ( now < fTime ):
+                self.currentProgressBar.setValue(now)
+            if ( now < fTime ):
+                self.overallProgressBar.setValue(now)
+        #elif ( self.isRunning() ):
+            #now = QtCore.QDateTime().currentDateTime().toTime_t()
+            #self.currentProgressBar.setValue(now)
+            #self.overallProgressBar.setValue(now)
         else:
             self.currentProgressBar.reset()
             self.overallProgressBar.reset()
@@ -914,6 +995,7 @@ class BakeOutProgrammerTab(UiTab):
         db = Database()
         items = [""] 
         items.extend(db.get_device_exported("*/vgct*").value_string)
+        items.extend(db.get_device_exported("*/mks*").value_string)
         self.pressureCombo.addItems(sorted(i for i in items if not i.startswith("dserver")))
     
 #    addPressureComboItems()
@@ -1010,5 +1092,14 @@ if ( __name__ == "__main__" ):
     import sys
     app = QtGui.QApplication(sys.argv)
     mainWindow = BakeOutProgrammerMainWindow()
-    mainWindow.showMaximized()
+    mainWindow.show()#Maximized()
+    try:
+        view = (a for a in mainWindow.menuWidget().actions() if 'view' in str(a.text()).lower()).next()
+        logview = (b for b in view.menu().actions() if 'log' in str(b.text()).lower()).next()
+        if logview.isChecked(): logview.trigger()
+    except:
+        print 'Unable to disable TauLogViewer'
+        print traceback.format_exc()
     sys.exit(app.exec_())
+
+

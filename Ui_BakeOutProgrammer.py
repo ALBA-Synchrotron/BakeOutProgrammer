@@ -1,4 +1,4 @@
-﻿from __future__ import division
+from __future__ import division
 from PyQt4 import QtCore, QtGui, Qwt5 as Qwt
 from tau.widget import TauWidget, TauMainWindow, TauValueLabel, TauValueSpinBox
 from tau.widget.qwt import TauTrend
@@ -24,6 +24,11 @@ class UiMainWindow(TauMainWindow):
         # #------------------------------------------------------- controllerCombo
         self.controllerCombo = QtGui.QComboBox()
         self.controllerCombo.setObjectName("controllerCombo")
+        
+        self.controllerState = TauValueLabel()
+        self.controllerStatus = QtGui.QPushButton("Show Status")
+        self.controllerStatus.setObjectName("controllerStatus")
+        
         # #------------------------------------------------ end of controllerCombo
         
         # #----------------------------------------------------------- tabWidget
@@ -55,7 +60,9 @@ class UiMainWindow(TauMainWindow):
         
         self.centralWidget.layout().addWidget(QtGui.QLabel("Bakeout controller"), 0, 0)
         self.centralWidget.layout().addWidget(self.controllerCombo, 0, 1)
-        self.centralWidget.layout().addWidget(self.tabWidget, 1, 0, 1, 2)        
+        self.centralWidget.layout().addWidget(self.controllerStatus, 1, 0)
+        self.centralWidget.layout().addWidget(self.controllerState, 1, 1)
+        self.centralWidget.layout().addWidget(self.tabWidget, 2, 0, 1, 2)#4 #1,0,1,2)
         
         self.setCentralWidget(self.centralWidget)
         #-------------------------------------------------- end of centralWidget
@@ -100,6 +107,7 @@ class UiTab(TauWidget):
         self._cLimits = []
         self._cOutputs = []
         self._cTemps = []      
+        self._cTempsSp = []      
                 
         self.setObjectName("tab")
         self.setLayout(QtGui.QGridLayout())
@@ -273,6 +281,38 @@ class UiTab(TauWidget):
         self.channelTemp8 = TauValueLabel()
         self.channelTemp8.setObjectName("channelTemp8")
         self._cTemps.append(self.channelTemp8)
+        
+        self.channelTempSp1 = TauValueLabel()
+        self.channelTempSp1.setObjectName("channelTempSp1")
+        self._cTempsSp.append(self.channelTempSp1)
+        
+        self.channelTempSp2 = TauValueLabel()
+        self.channelTempSp2.setObjectName("channelTempSp2")
+        self._cTempsSp.append(self.channelTempSp2) 
+        
+        self.channelTempSp3 = TauValueLabel()
+        self.channelTempSp3.setObjectName("channelTempSp3")
+        self._cTempsSp.append(self.channelTempSp3) 
+                
+        self.channelTempSp4 = TauValueLabel()
+        self.channelTempSp4.setObjectName("channelTempSp4")
+        self._cTempsSp.append(self.channelTempSp4) 
+        
+        self.channelTempSp5 = TauValueLabel()
+        self.channelTempSp5.setObjectName("channelTempSp5")
+        self._cTempsSp.append(self.channelTempSp5) 
+        
+        self.channelTempSp6 = TauValueLabel()
+        self.channelTempSp6.setObjectName("channelTempSp6")
+        self._cTempsSp.append(self.channelTempSp6)  
+               
+        self.channelTempSp7 = TauValueLabel()
+        self.channelTempSp7.setObjectName("channelTempSp7")
+        self._cTempsSp.append(self.channelTempSp7)
+        
+        self.channelTempSp8 = TauValueLabel()
+        self.channelTempSp8.setObjectName("channelTempSp8")
+        self._cTempsSp.append(self.channelTempSp8)        
         # #--------------------------------------------------- end of channelTemps
         
         # #---------------------------------------------------------- channelOutput
@@ -380,12 +420,15 @@ class UiTab(TauWidget):
         channelGroupBox1.setLayout(QtGui.QGridLayout())
         channelGroupBox1.layout().addWidget(QtGui.QLabel("Select"), 0, 0)
         channelGroupBox1.layout().addWidget(self.channelCheckBox1, 0, 1)
-        channelGroupBox1.layout().addWidget(QtGui.QLabel("Temperature"), 1, 0)        
+        channelGroupBox1.layout().addWidget(QtGui.QLabel("Temp."), 1, 0)        
         channelGroupBox1.layout().addWidget(self.channelTemp1, 1, 1)
         channelGroupBox1.layout().addWidget(QtGui.QLabel(u"\u00B0" + "C"), 1, 2)        
-        channelGroupBox1.layout().addWidget(QtGui.QLabel("Output"), 2, 0)         
-        channelGroupBox1.layout().addWidget(self.channelOutput1, 2, 1)
-        channelGroupBox1.layout().addWidget(QtGui.QLabel("%"), 2, 2)        
+        channelGroupBox1.layout().addWidget(QtGui.QLabel("TSet"), 2, 0)        
+        channelGroupBox1.layout().addWidget(self.channelTempSp1, 2, 1)
+        channelGroupBox1.layout().addWidget(QtGui.QLabel(u"\u00B0" + "C"), 2, 2)        
+        channelGroupBox1.layout().addWidget(QtGui.QLabel("Output"), 3, 0)         
+        channelGroupBox1.layout().addWidget(self.channelOutput1, 3, 1)
+        channelGroupBox1.layout().addWidget(QtGui.QLabel("%"), 3, 2)        
         self._cGroupBoxes.append(channelGroupBox1)
         # #------------------------------------------------ end of channelGroupBox1
 
@@ -394,12 +437,15 @@ class UiTab(TauWidget):
         channelGroupBox2.setLayout(QtGui.QGridLayout())
         channelGroupBox2.layout().addWidget(QtGui.QLabel("Select"), 0, 0)
         channelGroupBox2.layout().addWidget(self.channelCheckBox2, 0, 1)
-        channelGroupBox2.layout().addWidget(QtGui.QLabel("Temperature"), 1, 0)        
+        channelGroupBox2.layout().addWidget(QtGui.QLabel("Temp."), 1, 0)        
         channelGroupBox2.layout().addWidget(self.channelTemp2, 1, 1)
         channelGroupBox2.layout().addWidget(QtGui.QLabel(u"\u00B0" + "C"), 1, 2)        
-        channelGroupBox2.layout().addWidget(QtGui.QLabel("Output"), 2, 0)         
-        channelGroupBox2.layout().addWidget(self.channelOutput2, 2, 1)
-        channelGroupBox2.layout().addWidget(QtGui.QLabel("%"), 2, 2) 
+        channelGroupBox2.layout().addWidget(QtGui.QLabel("TSet"), 2, 0)        
+        channelGroupBox2.layout().addWidget(self.channelTempSp2, 2, 1)
+        channelGroupBox2.layout().addWidget(QtGui.QLabel(u"\u00B0" + "C"), 2, 2)        
+        channelGroupBox2.layout().addWidget(QtGui.QLabel("Output"), 3, 0)         
+        channelGroupBox2.layout().addWidget(self.channelOutput2, 3, 1)
+        channelGroupBox2.layout().addWidget(QtGui.QLabel("%"), 3, 2)        
         self._cGroupBoxes.append(channelGroupBox2)      
         # #------------------------------------------------ end of channelGroupBox2        
 
@@ -408,12 +454,15 @@ class UiTab(TauWidget):
         channelGroupBox3.setLayout(QtGui.QGridLayout())
         channelGroupBox3.layout().addWidget(QtGui.QLabel("Select"), 0, 0)
         channelGroupBox3.layout().addWidget(self.channelCheckBox3, 0, 1)
-        channelGroupBox3.layout().addWidget(QtGui.QLabel("Temperature"), 1, 0)        
+        channelGroupBox3.layout().addWidget(QtGui.QLabel("Temp."), 1, 0)        
         channelGroupBox3.layout().addWidget(self.channelTemp3, 1, 1)
         channelGroupBox3.layout().addWidget(QtGui.QLabel(u"\u00B0" + "C"), 1, 2)        
-        channelGroupBox3.layout().addWidget(QtGui.QLabel("Output"), 2, 0)         
-        channelGroupBox3.layout().addWidget(self.channelOutput3, 2, 1)
-        channelGroupBox3.layout().addWidget(QtGui.QLabel("%"), 2, 2)
+        channelGroupBox3.layout().addWidget(QtGui.QLabel("TSet"), 2, 0)        
+        channelGroupBox3.layout().addWidget(self.channelTempSp3, 2, 1)
+        channelGroupBox3.layout().addWidget(QtGui.QLabel(u"\u00B0" + "C"), 2, 2)        
+        channelGroupBox3.layout().addWidget(QtGui.QLabel("Output"), 3, 0)         
+        channelGroupBox3.layout().addWidget(self.channelOutput3, 3, 1)
+        channelGroupBox3.layout().addWidget(QtGui.QLabel("%"), 3, 2)        
         self._cGroupBoxes.append(channelGroupBox3)       
         # #------------------------------------------------ end of channelGroupBox3
         
@@ -422,12 +471,15 @@ class UiTab(TauWidget):
         channelGroupBox4.setLayout(QtGui.QGridLayout())
         channelGroupBox4.layout().addWidget(QtGui.QLabel("Select"), 0, 0)
         channelGroupBox4.layout().addWidget(self.channelCheckBox4, 0, 1)
-        channelGroupBox4.layout().addWidget(QtGui.QLabel("Temperature"), 1, 0)        
+        channelGroupBox4.layout().addWidget(QtGui.QLabel("Temp."), 1, 0)        
         channelGroupBox4.layout().addWidget(self.channelTemp4, 1, 1)
         channelGroupBox4.layout().addWidget(QtGui.QLabel(u"\u00B0" + "C"), 1, 2)        
-        channelGroupBox4.layout().addWidget(QtGui.QLabel("Output"), 2, 0)         
-        channelGroupBox4.layout().addWidget(self.channelOutput4, 2, 1)
-        channelGroupBox4.layout().addWidget(QtGui.QLabel("%"), 2, 2)
+        channelGroupBox4.layout().addWidget(QtGui.QLabel("TSet"), 2, 0)        
+        channelGroupBox4.layout().addWidget(self.channelTempSp4, 2, 1)
+        channelGroupBox4.layout().addWidget(QtGui.QLabel(u"\u00B0" + "C"), 2, 2)        
+        channelGroupBox4.layout().addWidget(QtGui.QLabel("Output"), 3, 0)         
+        channelGroupBox4.layout().addWidget(self.channelOutput4, 3, 1)
+        channelGroupBox4.layout().addWidget(QtGui.QLabel("%"), 3, 2)        
         self._cGroupBoxes.append(channelGroupBox4)        
         # #------------------------------------------------ end of channelGroupBox4        
        
@@ -436,12 +488,15 @@ class UiTab(TauWidget):
         channelGroupBox5.setLayout(QtGui.QGridLayout())
         channelGroupBox5.layout().addWidget(QtGui.QLabel("Select"), 0, 0)
         channelGroupBox5.layout().addWidget(self.channelCheckBox5, 0, 1)
-        channelGroupBox5.layout().addWidget(QtGui.QLabel("Temperature"), 1, 0)        
+        channelGroupBox5.layout().addWidget(QtGui.QLabel("Temp."), 1, 0)        
         channelGroupBox5.layout().addWidget(self.channelTemp5, 1, 1)
         channelGroupBox5.layout().addWidget(QtGui.QLabel(u"\u00B0" + "C"), 1, 2)        
-        channelGroupBox5.layout().addWidget(QtGui.QLabel("Output"), 2, 0)         
-        channelGroupBox5.layout().addWidget(self.channelOutput5, 2, 1)
-        channelGroupBox5.layout().addWidget(QtGui.QLabel("%"), 2, 2)
+        channelGroupBox5.layout().addWidget(QtGui.QLabel("TSet"), 2, 0)        
+        channelGroupBox5.layout().addWidget(self.channelTempSp5, 2, 1)
+        channelGroupBox5.layout().addWidget(QtGui.QLabel(u"\u00B0" + "C"), 2, 2)        
+        channelGroupBox5.layout().addWidget(QtGui.QLabel("Output"), 3, 0)         
+        channelGroupBox5.layout().addWidget(self.channelOutput5, 3, 1)
+        channelGroupBox5.layout().addWidget(QtGui.QLabel("%"), 3, 2)        
         self._cGroupBoxes.append(channelGroupBox5)        
         # #------------------------------------------------ end of channelGroupBox5        
         
@@ -450,12 +505,15 @@ class UiTab(TauWidget):
         channelGroupBox6.setLayout(QtGui.QGridLayout())
         channelGroupBox6.layout().addWidget(QtGui.QLabel("Select"), 0, 0)
         channelGroupBox6.layout().addWidget(self.channelCheckBox6, 0, 1)
-        channelGroupBox6.layout().addWidget(QtGui.QLabel("Temperature"), 1, 0)        
+        channelGroupBox6.layout().addWidget(QtGui.QLabel("Temp."), 1, 0)        
         channelGroupBox6.layout().addWidget(self.channelTemp6, 1, 1)
         channelGroupBox6.layout().addWidget(QtGui.QLabel(u"\u00B0" + "C"), 1, 2)        
-        channelGroupBox6.layout().addWidget(QtGui.QLabel("Output"), 2, 0)         
-        channelGroupBox6.layout().addWidget(self.channelOutput6, 2, 1)
-        channelGroupBox6.layout().addWidget(QtGui.QLabel("%"), 2, 2)
+        channelGroupBox6.layout().addWidget(QtGui.QLabel("TSet"), 2, 0)        
+        channelGroupBox6.layout().addWidget(self.channelTempSp6, 2, 1)
+        channelGroupBox6.layout().addWidget(QtGui.QLabel(u"\u00B0" + "C"), 2, 2)        
+        channelGroupBox6.layout().addWidget(QtGui.QLabel("Output"), 3, 0)         
+        channelGroupBox6.layout().addWidget(self.channelOutput6, 3, 1)
+        channelGroupBox6.layout().addWidget(QtGui.QLabel("%"), 3, 2)        
         self._cGroupBoxes.append(channelGroupBox6)        
         # #------------------------------------------------ end of channelGroupBox6        
         
@@ -464,12 +522,15 @@ class UiTab(TauWidget):
         channelGroupBox7.setLayout(QtGui.QGridLayout())
         channelGroupBox7.layout().addWidget(QtGui.QLabel("Select"), 0, 0)
         channelGroupBox7.layout().addWidget(self.channelCheckBox7, 0, 1)
-        channelGroupBox7.layout().addWidget(QtGui.QLabel("Temperature"), 1, 0)        
+        channelGroupBox7.layout().addWidget(QtGui.QLabel("Temp."), 1, 0)        
         channelGroupBox7.layout().addWidget(self.channelTemp7, 1, 1)
         channelGroupBox7.layout().addWidget(QtGui.QLabel(u"\u00B0" + "C"), 1, 2)        
-        channelGroupBox7.layout().addWidget(QtGui.QLabel("Output"), 2, 0)         
-        channelGroupBox7.layout().addWidget(self.channelOutput7, 2, 1)
-        channelGroupBox7.layout().addWidget(QtGui.QLabel("%"), 2, 2)
+        channelGroupBox7.layout().addWidget(QtGui.QLabel("TSet"), 2, 0)        
+        channelGroupBox7.layout().addWidget(self.channelTempSp7, 2, 1)
+        channelGroupBox7.layout().addWidget(QtGui.QLabel(u"\u00B0" + "C"), 2, 2)        
+        channelGroupBox7.layout().addWidget(QtGui.QLabel("Output"), 3, 0)         
+        channelGroupBox7.layout().addWidget(self.channelOutput7, 3, 1)
+        channelGroupBox7.layout().addWidget(QtGui.QLabel("%"), 3, 2)        
         self._cGroupBoxes.append(channelGroupBox7)        
         # #------------------------------------------------ end of channelGroupBox7        
 
@@ -478,12 +539,15 @@ class UiTab(TauWidget):
         channelGroupBox8.setLayout(QtGui.QGridLayout())
         channelGroupBox8.layout().addWidget(QtGui.QLabel("Select"), 0, 0)
         channelGroupBox8.layout().addWidget(self.channelCheckBox8, 0, 1)
-        channelGroupBox8.layout().addWidget(QtGui.QLabel("Temperature"), 1, 0)        
+        channelGroupBox8.layout().addWidget(QtGui.QLabel("Temp."), 1, 0)        
         channelGroupBox8.layout().addWidget(self.channelTemp8, 1, 1)
         channelGroupBox8.layout().addWidget(QtGui.QLabel(u"\u00B0" + "C"), 1, 2)        
-        channelGroupBox8.layout().addWidget(QtGui.QLabel("Output"), 2, 0)         
-        channelGroupBox8.layout().addWidget(self.channelOutput8, 2, 1)
-        channelGroupBox8.layout().addWidget(QtGui.QLabel("%"), 2, 2)
+        channelGroupBox8.layout().addWidget(QtGui.QLabel("TSet"), 2, 0)        
+        channelGroupBox8.layout().addWidget(self.channelTempSp8, 2, 1)
+        channelGroupBox8.layout().addWidget(QtGui.QLabel(u"\u00B0" + "C"), 2, 2)        
+        channelGroupBox8.layout().addWidget(QtGui.QLabel("Output"), 3, 0)         
+        channelGroupBox8.layout().addWidget(self.channelOutput8, 3, 1)
+        channelGroupBox8.layout().addWidget(QtGui.QLabel("%"), 3, 2)        
         self._cGroupBoxes.append(channelGroupBox8)
         # #------------------------------------------------ end of channelGroupBox8
          
