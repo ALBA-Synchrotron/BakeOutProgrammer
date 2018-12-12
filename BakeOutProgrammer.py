@@ -3,14 +3,30 @@ from PyQt4 import QtCore, QtGui, Qwt5 as Qwt
 from Ui_BakeOutProgrammer import *
 from PyTango import Database, DevFailed
 from PyTangoArchiving.widget import ContextToolBar
+import tau
+tau.setLogLevel(0)
 from tau.core import TauEventType, TauAttribute
 from tau.widget import TauBaseComponent, TauMainWindow, TauValueLabel, TauValueSpinBox, TauWidget, TauValue 
 from tau.widget.qwt import TauTrend
 
 TEMP_ROOM = 25.
 TEMP_DEFAULT = 1200.
+POLLING_PERIOD = 10000
 PROGRAM_DEFAULT = [TEMP_DEFAULT, 0., -1.]
 PARAMS_DEFAULT = [TEMP_DEFAULT, 0., 0., 0.]
+
+def changePollingPeriodForAttribute(attribute,period=POLLING_PERIOD):
+    try: tau.Attribute(str(attribute)).changePollingPeriod(period)
+    except Exception,e: print 'changePollingPeriodForAttribute(%s) Failed!: %s'%(attribute,e)
+    
+def getFullModelName(listener):
+    print 'In getFullModelName(%s)'%listener
+    print 'parent is %s' % listener.getParentModelName()
+    print 'model is %s' % listener.getModelName()
+    print 'parentObj is %s' % listener.getParentModelObj()
+    print 'modelObj is %s' % listener.getModelObj()
+    return listener.getParentModelName()+listener.getModelName()
+
 
 class BakeOutProgrammerMainWindow(UiMainWindow):
     def __init__(self, parent=None, flags=0):
@@ -37,7 +53,7 @@ class BakeOutProgrammerMainWindow(UiMainWindow):
 
     @QtCore.pyqtSignature("QString")
     def on_controllerCombo_currentIndexChanged(self, devModel):
-        self.debug("on_controllerCombo_currentIndexChanged)\tdevModel: %s" % devModel)
+        self.info("In on_controllerCombo_currentIndexChanged)\tdevModel: %s" % devModel)
         self.reset()
         self.setModel(devModel)
         modelObj = self.getModelObj()
@@ -66,6 +82,10 @@ class BakeOutProgrammerMainWindow(UiMainWindow):
         if ( not self.tabWidget.count() ):
             self.tabAddRequest()
             
+        #srubio@cells.es: being sure that polling periods are adjusted:
+        changePollingPeriodForAttribute(devModel+'/Temperature_All')
+        [changePollingPeriodForAttribute(devModel+'/Temperature_%s'%(c+1)) for c in range(8)]
+        self.info("Out of on_controllerCombo_currentIndexChanged)\tdevModel: %s" % devModel)
 #    on_deviceCombo_currentIndexChanged()
  
     @QtCore.pyqtSignature("")
@@ -148,8 +168,9 @@ class BakeOutProgrammerMainWindow(UiMainWindow):
                 self.closeProgramButton.show()                
         
         number = self.nextNumber()
-        self.tabWidget.addTab(BakeOutProgrammerTab(number), "Program " + str(number))
-        return True        
+        tab = BakeOutProgrammerTab(number)
+        self.tabWidget.addTab(tab, "Program " + str(number))
+        return tab#True        #modified by srubio@cells.es
         
 #    tabAddRequest()
     
@@ -208,6 +229,7 @@ class BakeOutProgrammerMainWindow(UiMainWindow):
 
 class BakeOutProgrammerTab(UiTab):  
     def __init__(self, number, parent=None, flags=0):
+        print 'In BakeOutProgrammerTab.__init__()'
         UiTab.__init__(self, parent, flags)
         self._number = number
         self._pressureModel = ""
@@ -222,7 +244,7 @@ class BakeOutProgrammerTab(UiTab):
         
         self._listener = BakeOutProgrammerListener(self)
         self._listener.setUseParentModel(True)
-        self._listener.setModel("/Temperature_All")            
+        self._listener.setModel("/Temperature_All")
         
         self.addPressureComboItems()
         for channel in range(1, 9):
@@ -232,6 +254,7 @@ class BakeOutProgrammerTab(UiTab):
         self.connect(self._listener,
                      QtCore.SIGNAL("valueChanged(PyQt_PyObject)"),
                      self.on_listener_valueChanged)
+        print 'Out of BakeOutProgrammerTab.__init__()'
         
 #    __init__()
 
@@ -318,7 +341,8 @@ class BakeOutProgrammerTab(UiTab):
             self.hidePressureCurve()
             self.setPressureModel(self.pressureCombo.currentText() + "/" + attrModel)
             self.gaugeValue.setModel(self.pressureModel())
-            self.togglePressureCurve(self.isStarted())
+            changePollingPeriodForAttribute(self.gaugeValue.getModelName())
+            self.togglePressureCurve(True)#self.isStarted()) #srubio: modified to force pressure to be shown
         else:
             self.gaugeValue.resetModel()
             self.hidePressureCurve()
@@ -448,6 +472,7 @@ class BakeOutProgrammerTab(UiTab):
 #    on_channelCheckBox8_stateChanged()
     
     def on_checkBox_stateChanged(self, channel, state):
+        self.debug('*'*40)
         self.debug("on_checkBox_stateChanged()\tchannel: %s\tstate: %s" % (channel, state))
         self.setModified(True)
         self.setChannelState(channel, state)
@@ -789,7 +814,7 @@ class BakeOutProgrammerTab(UiTab):
 
     def toggleTempCurve(self, channel, on):
         self.debug("toggleTempCurve()\tchannel: %s\ton: %s" % (channel, on))
-        if ( self.isStarted() ):
+        if True:#( self.isStarted() ): #srubio: modified to allow plotting w/out program
             modelObj = self.getModelObj()
             if ( modelObj ): 
                 model = "%s/Temperature_%s" % (modelObj.getNormalName(), channel)
@@ -810,7 +835,7 @@ class BakeOutProgrammerTab(UiTab):
 
     def togglePressureCurve(self, on):
         self.debug("togglePressureCurve()\ton: %s" % on)
-        if ( self.isStarted() ):
+        if True: #( self.isStarted() ): #srubio: modified to allow plotting w/out program
             model = self.pressureModel()
             if ( model ):
                 if ( on ):
