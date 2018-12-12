@@ -1,0 +1,7 @@
+#!/bin/sh
+#export TANGO_HOST=alba02:10000
+FOLDER=/home/srubio/PROJECTS/GUIs/BakeOutProgrammer
+#FOLDER=/homelocal/sicilia/applications/BakeOutProgrammer
+cd $FOLDER
+export PYTHONPATH=$FOLDER:$PYTHONPATH
+/usr/bin/python BakeOutProgrammer.py
